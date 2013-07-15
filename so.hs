@@ -51,6 +51,10 @@ unZipResult x = Right $ GZip.decompress $ C.pack x
 parseResult :: C.ByteString -> (Either String [String])
 parseResult x = fmap showQuestions (Json.eitherDecode x :: Either String Questions)
 
+mkString :: [String] -> Char -> String
+mkString [] separator = ""
+mkString ss separator = foldl (\x -> \y -> x ++ [separator] ++ y) "" ss
+
 main = do
     currentTime <- getPOSIXTime
     let roundedCurrentTime = round currentTime
@@ -62,6 +66,9 @@ main = do
         unzippedResult <- unZipResult result
         parsedResult <- parseResult unzippedResult
         return parsedResult
+    appendFile "so_questions_db" $ (case unzippedParsedResult of
+        Left err -> ""
+        Right s  -> (mkString s '\n')) 
     putStrLn $ (case unzippedParsedResult of
         Left err -> show err 
         Right s  -> "Questions as of " ++ (show roundedCurrentTime) ++ " \n" ++ (show s))
