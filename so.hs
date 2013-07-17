@@ -7,6 +7,7 @@ import Control.Applicative
 import Control.Monad.Trans
 import Data.Maybe
 import Data.Time.Clock.POSIX
+import System.IO
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
 import qualified Data.Aeson as Json
@@ -55,6 +56,11 @@ mkString :: [String] -> Char -> String
 mkString [] separator = ""
 mkString ss separator = foldl (\x -> \y -> x ++ [separator] ++ y) "" ss
 
+putLine :: Handle -> String -> IO String
+putLine handle line = do 
+    puttedLine <- hPutStrLn handle line
+    return line
+
 main = do
     currentTime <- getPOSIXTime
     let roundedCurrentTime = round currentTime
@@ -66,9 +72,9 @@ main = do
         unzippedResult <- unZipResult result
         parsedResult <- parseResult unzippedResult
         return parsedResult
-    appendFile "so_questions_db" $ (case unzippedParsedResult of
-        Left err -> ""
-        Right s  -> (mkString s '\n')) 
-    putStrLn $ (case unzippedParsedResult of
-        Left err -> show err 
-        Right s  -> "Questions as of " ++ (show roundedCurrentTime) ++ " \n" ++ (show s))
+    newQs <- withFile "so_questions_db" ReadWriteMode (\handle -> do
+        contents <- hGetContents handle
+        case unzippedParsedResult of
+            Left err         -> return ["Error: " ++ err]
+            Right questions  -> let newQuestions = filter (\i -> not $ elem i (lines contents)) questions in sequence $ fmap (putLine handle) newQuestions) 
+    putStrLn $ "Questions as of " ++ (show roundedCurrentTime) ++ ":\n" ++ (show newQs)
