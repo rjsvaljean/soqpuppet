@@ -8,6 +8,7 @@ import Control.Monad.Trans
 import Text.CSV
 import Data.Time.Clock.POSIX
 import System.IO
+import System.Directory
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
 import qualified Data.Aeson as Json
@@ -64,6 +65,10 @@ diffCSVs :: Either a CSV -> Either b CSV -> Either String CSV
 diffCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> not $ head r `elem` csv2Ids) csv1
 diffCSVs _ _ = Left "Error"
 
+mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
+mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ (filter (\r -> not $ head r `elem` csv2Ids) csv1) ++ csv2
+mergeCSVs _ _ = Left "Error"
+
 main :: IO String
 main = do
     currentTime <- getPOSIXTime
@@ -77,23 +82,12 @@ main = do
         parseResult unzippedResult
     csvOfExistingQs <- parseCSVFromFile "so_questions_db"
     let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
-    _ <- appendFile "so_questions_db" $ printCSV (case csvOfNewQs of
+    let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
+    _ <- writeFile "so_questions_db.new" $ printCSV (case csvOfAllQs of
         Left err -> [[]]
         Right out -> out)
+    _ <- removeFile "so_questions_db"
+    _ <- renameFile "so_questions_db.new" "so_questions_db"
     return $ case csvOfNewQs of 
         Right newQs -> printCSV newQs
         Left err -> err
-
-    
-
---     existingQsCSV <- fmap toQ $ parseCSVFromFile "so_questions_db"
---     let newQs
---     newQs <- fmap (toOnlyNewQs existingQIDs) unzippedParsedResult
---     
-
---     newQs <- withFile "so_questions_db" WriteMode (\handle -> do
---         -- contents <- hGetContents handle
---         case unzippedParsedResult of
---             Left err         -> return ["Error: " ++ err]
---             Right questions  -> let newQuestions = filter (\i -> True) questions in sequence $ fmap (putLine handle) newQuestions) 
---     putStrLn $ "Questions as of " ++ (show roundedCurrentTime) ++ ":\n" ++ (show newQs)
