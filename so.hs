@@ -69,7 +69,7 @@ mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
 mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ (filter (\r -> not $ head r `elem` csv2Ids) csv1) ++ csv2
 mergeCSVs _ _ = Left "Error"
 
-main :: IO String
+main :: IO ()
 main = do
     currentTime <- getPOSIXTime
     let roundedCurrentTime = round currentTime
@@ -88,6 +88,6 @@ main = do
         Right out -> out)
     _ <- removeFile "so_questions_db"
     _ <- renameFile "so_questions_db.new" "so_questions_db"
-    return $ case csvOfNewQs of 
-        Right newQs -> printCSV newQs
-        Left err -> err
+    case csvOfNewQs of 
+        Right newQs -> putStr $ printCSV newQs
+        Left err -> putStrLn err
