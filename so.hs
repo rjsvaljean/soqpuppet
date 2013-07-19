@@ -7,7 +7,6 @@ import Control.Applicative
 import Control.Monad.Trans
 import Text.CSV
 import Data.Time.Clock.POSIX
-import System.IO
 import System.Directory
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
@@ -41,9 +40,6 @@ instance Json.FromJSON Questions where
 toCSVRecord :: Question -> Record
 toCSVRecord q = [show $ creationDate q,  title q]
 
-toQ :: Record -> Question
-toQ (rowId : rowTitle : _) = Question rowTitle (read rowId :: Integer)
-
 toCSV :: Questions -> CSV
 toCSV questions = map toCSVRecord $ qs questions
 
@@ -53,20 +49,12 @@ unZipResult x = Right $ GZip.decompress $ C.pack x
 parseResult :: C.ByteString -> Either String CSV
 parseResult x = fmap toCSV (Json.eitherDecode x :: Either String Questions)
 
-putLine :: Handle -> String -> IO String
-putLine handle line = do 
-    _ <- hPutStrLn handle line
-    return line
-
-toOnlyNewQs :: [String] -> [Record] -> [Record]
-toOnlyNewQs existingQIDs = filter (\q -> head q `elem` existingQIDs)
-
 diffCSVs :: Either a CSV -> Either b CSV -> Either String CSV
-diffCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> not $ head r `elem` csv2Ids) csv1
+diffCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1
 diffCSVs _ _ = Left "Error"
 
 mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
-mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ (filter (\r -> not $ head r `elem` csv2Ids) csv1) ++ csv2
+mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
 mergeCSVs _ _ = Left "Error"
 
 main :: IO ()
@@ -84,7 +72,7 @@ main = do
     let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
     let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
     _ <- writeFile "so_questions_db.new" $ printCSV (case csvOfAllQs of
-        Left err -> [[]]
+        Left _ -> [[]]
         Right out -> out)
     _ <- removeFile "so_questions_db"
     _ <- renameFile "so_questions_db.new" "so_questions_db"
