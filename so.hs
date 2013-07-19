@@ -2,6 +2,7 @@
 
 import Network.URI
 import Network.HTTP
+import Network.Curl
 import Control.Monad.Maybe
 import Control.Applicative
 import Control.Monad.Trans
@@ -40,6 +41,9 @@ instance Json.FromJSON Questions where
 toCSVRecord :: Question -> Record
 toCSVRecord q = [show $ creationDate q,  title q]
 
+toQ :: Record -> Question
+toQ (rowId : rowTitle : _) = Question rowTitle (read rowId :: Integer)
+
 toCSV :: Questions -> CSV
 toCSV questions = map toCSVRecord $ qs questions
 
@@ -56,6 +60,19 @@ diffCSVs _ _ = Left "Error"
 mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
 mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
 mergeCSVs _ _ = Left "Error"
+
+sendToPebble :: Question -> IO ()
+sendToPebble q = curlPost 
+    "https://api.pushover.net/1/messages.json" 
+    [ "token=gd2AMVUvJtZwjXbtnzKfxSGQCfsjXrli", 
+        "user=bkqipwQJSEx4rsWPApehLR91i7x9Su", 
+        ("message=" ++ title q)]
+
+showNewQs :: CSV -> IO ()
+showNewQs qs =  do
+    _ <- putStr $ printCSV qs
+    _ <- sequence $ fmap (sendToPebble . toQ) qs
+    return ()
 
 main :: IO ()
 main = do
@@ -77,5 +94,5 @@ main = do
     _ <- removeFile "so_questions_db"
     _ <- renameFile "so_questions_db.new" "so_questions_db"
     case csvOfNewQs of 
-        Right newQs -> putStr $ printCSV newQs
+        Right newQs -> showNewQs newQs
         Left err -> putStrLn err
