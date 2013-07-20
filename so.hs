@@ -71,7 +71,7 @@ sendToPebble q = curlPost
 showNewQs :: CSV -> IO ()
 showNewQs qs =  do
     _ <- putStr $ printCSV qs
-    _ <- sequence $ fmap (sendToPebble . toQ) qs
+    _ <- sequence $ fmap (sendToPebble . toQ) (take 5 qs)
     return ()
 
 main :: IO ()
