@@ -22,8 +22,14 @@ openURL url = case parseURI url of
 scalaQsInLast15MinsURL ::  Integer -> Integer
 scalaQsInLast15MinsURL now = now - (15 * 60 * 1000) 
 
-constructSOQuestionsURL :: Show a => a -> String
-constructSOQuestionsURL x = "http://api.stackoverflow.com/1.1/questions?answers=false&body=false&comments=false&fromdate=" ++ show x ++ "&tagged=scala&sort=creation"
+constructSOQuestionsURL :: Show a => String -> a -> String
+constructSOQuestionsURL tag timeSince = "http://api.stackoverflow.com/1.1/questions?" ++ 
+    "answers=false" ++ 
+    "&body=false" ++ 
+    "&comments=false" ++ 
+    "&fromdate=" ++ show timeSince ++ 
+    "&tagged=" ++ tag ++ 
+    "&sort=creation"
 
 toLeft :: Maybe a -> e -> Either e a 
 toLeft ( Just x ) _ = Right x
@@ -77,11 +83,11 @@ showNewQs qs sendQ =  do
 
 main :: IO ()
 main = do
-    userToken : appToken :  _ <- getArgs
+    userToken : appToken :  tag : _ <- getArgs
     currentTime <- getPOSIXTime
     let roundedCurrentTime = round currentTime
     let timeMillis = scalaQsInLast15MinsURL roundedCurrentTime
-    let soURL = constructSOQuestionsURL timeMillis
+    let soURL = constructSOQuestionsURL tag timeMillis
     resultAsString <- runMaybeT $ openURL soURL
     let csvOfFetchedQs = do  
         result <- toLeft resultAsString "could not fetch teh URL"
