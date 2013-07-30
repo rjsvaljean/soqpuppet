@@ -9,6 +9,7 @@ import Control.Monad.Trans
 import Text.CSV
 import Data.Time.Clock.POSIX
 import System.Directory
+import System.Environment
 import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
 import qualified Data.Aeson as Json
@@ -61,21 +62,22 @@ mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
 mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
 mergeCSVs _ _ = Left "Error"
 
-sendToPebble :: Question -> IO ()
-sendToPebble q = curlPost 
+sendToPebble :: String -> String -> Question -> IO ()
+sendToPebble userToken appToken q = curlPost 
     "https://api.pushover.net/1/messages.json" 
-    [ "token=gd2AMVUvJtZwjXbtnzKfxSGQCfsjXrli", 
-        "user=bkqipwQJSEx4rsWPApehLR91i7x9Su", 
+    [ "token=" ++ appToken, 
+        "user=" ++ userToken, 
         ("message=" ++ title q)]
 
-showNewQs :: CSV -> IO ()
-showNewQs qs =  do
+showNewQs :: CSV -> (Question -> IO ()) -> IO ()
+showNewQs qs sendQ =  do
     _ <- putStr $ printCSV qs
-    _ <- sequence $ fmap (sendToPebble . toQ) (take 5 qs)
+    _ <- sequence $ fmap (sendQ . toQ) (take 5 qs)
     return ()
 
 main :: IO ()
 main = do
+    userToken : appToken :  _ <- getArgs
     currentTime <- getPOSIXTime
     let roundedCurrentTime = round currentTime
     let timeMillis = scalaQsInLast15MinsURL roundedCurrentTime
@@ -94,5 +96,5 @@ main = do
     _ <- removeFile "so_questions_db"
     _ <- renameFile "so_questions_db.new" "so_questions_db"
     case csvOfNewQs of 
-        Right newQs -> showNewQs newQs
+        Right newQs -> showNewQs newQs $ sendToPebble userToken appToken
         Left err -> putStrLn err
