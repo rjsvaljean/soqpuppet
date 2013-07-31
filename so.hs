@@ -19,8 +19,8 @@ openURL url = case parseURI url of
     Nothing -> fail ""
     Just u -> liftIO (getResponseBody =<< simpleHTTP (mkRequest GET u))
 
-scalaQsInLast15MinsURL ::  Integer -> Integer
-scalaQsInLast15MinsURL now = now - (15 * 60 * 1000) 
+millis15SecsBack ::  POSIXTime -> Integer
+millis15SecsBack now = (round now) - (15 * 60 * 1000) 
 
 constructSOQuestionsURL :: Show a => String -> a -> String
 constructSOQuestionsURL tag timeSince = "http://api.stackoverflow.com/1.1/questions?" ++ 
@@ -30,6 +30,9 @@ constructSOQuestionsURL tag timeSince = "http://api.stackoverflow.com/1.1/questi
     "&fromdate=" ++ show timeSince ++ 
     "&tagged=" ++ tag ++ 
     "&sort=creation"
+
+postToPushover :: [String] -> IO()
+postToPushover = curlPost "https://api.pushover.net/1/messages.json" 
 
 toLeft :: Maybe a -> e -> Either e a 
 toLeft ( Just x ) _ = Right x
@@ -68,29 +71,23 @@ mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
 mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
 mergeCSVs _ _ = Left "Error"
 
-sendToPebble :: String -> String -> Question -> IO ()
-sendToPebble userToken appToken q = curlPost 
-    "https://api.pushover.net/1/messages.json" 
-    [ "token=" ++ appToken, 
-        "user=" ++ userToken, 
-        ("message=" ++ title q)]
+sendToPebble :: String -> String -> CSV -> IO [()]
+sendToPebble userToken appToken qs = let 
+    paramsFor question = [ "token=" ++ appToken, "user=" ++ userToken, ("message=" ++ title question)] 
+    in 
+        sequence $ fmap (postToPushover . paramsFor . toQ) (take 5 qs)
 
-showNewQs :: CSV -> (Question -> IO ()) -> IO ()
-showNewQs qs sendQ =  do
-    _ <- putStr $ printCSV qs
-    _ <- sequence $ fmap (sendQ . toQ) (take 5 qs)
-    return ()
+showNewQs :: CSV  -> IO ()
+showNewQs qs =  putStr $ printCSV qs
 
 main :: IO ()
 main = do
     userToken : appToken :  tag : _ <- getArgs
     currentTime <- getPOSIXTime
-    let roundedCurrentTime = round currentTime
-    let timeMillis = scalaQsInLast15MinsURL roundedCurrentTime
-    let soURL = constructSOQuestionsURL tag timeMillis
+    let soURL = constructSOQuestionsURL tag $ millis15SecsBack currentTime
     resultAsString <- runMaybeT $ openURL soURL
     let csvOfFetchedQs = do  
-        result <- toLeft resultAsString "could not fetch teh URL"
+        result <- toLeft resultAsString ("Could not fetch URL: " ++ soURL)
         unzippedResult <- unZipResult result
         parseResult unzippedResult
     csvOfExistingQs <- parseCSVFromFile "so_questions_db"
@@ -102,5 +99,8 @@ main = do
     _ <- removeFile "so_questions_db"
     _ <- renameFile "so_questions_db.new" "so_questions_db"
     case csvOfNewQs of 
-        Right newQs -> showNewQs newQs $ sendToPebble userToken appToken
+        Right newQs -> do 
+            _ <- showNewQs newQs
+            _ <- sendToPebble userToken appToken newQs
+            return ()
         Left err -> putStrLn err
