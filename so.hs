@@ -7,6 +7,7 @@ import Control.Monad.Maybe
 import Control.Applicative
 import Control.Monad.Trans
 import Text.CSV
+import Text.ParserCombinators.Parsec.Error
 import Data.Time.Clock.POSIX
 import System.Directory
 import System.Environment
@@ -63,13 +64,21 @@ unZipResult x = Right $ GZip.decompress $ C.pack x
 parseResult :: C.ByteString -> Either String CSV
 parseResult x = fmap toCSV (Json.eitherDecode x :: Either String Questions)
 
-diffCSVs :: Either a CSV -> Either b CSV -> Either String CSV
-diffCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1
-diffCSVs _ _ = Left "Error"
+csvOp :: (Show a, Show b) => ((CSV, CSV) -> CSV) -> Either a CSV -> Either b CSV -> Either String CSV
+csvOp f (Right csv1) (Right csv2) = Right $ f (csv1, csv2)
+csvOp f (Left error) (Right _) = Left (show error)
+csvOp f (Right _) (Left error) = Left (show error)
+csvOp f (Left e1) (Left e2)    = Left ((show e1) ++ (show e2))
 
-mergeCSVs :: Either a CSV -> Either b CSV -> Either String CSV
-mergeCSVs (Right csv1) (Right csv2) = let csv2Ids = fmap head csv2 in Right $ filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
-mergeCSVs _ _ = Left "Error"
+diffCSVs :: Either String CSV -> Either ParseError CSV -> Either String CSV
+diffCSVs = csvOp (\(csv1, csv2) ->
+    let csv2Ids = fmap head csv2 
+    in filter (\r -> head r `notElem` csv2Ids) csv1) 
+
+mergeCSVs :: Either String CSV -> Either ParseError CSV -> Either String CSV
+mergeCSVs = csvOp (\(csv1, csv2) ->
+    let csv2Ids = fmap head csv2 
+    in filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2)
 
 sendToPebble :: String -> String -> CSV -> IO [()]
 sendToPebble userToken appToken qs = let 
