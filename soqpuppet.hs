@@ -88,9 +88,13 @@ sendToPebble userToken appToken qs = let
 showNewQs :: CSV  -> IO ()
 showNewQs qs =  putStr $ printCSV qs
 
-main :: IO ()
-main = do
-    userToken : appToken :  tag : _ <- getArgs
+persistAllQuestions :: CSV -> IO ()
+persistAllQuestions csvOfAllQs = do
+    _ <- writeFile "so_questions_db.new" $ printCSV csvOfAllQs
+    renameFile "so_questions_db.new" "so_questions_db"
+
+validCommandLineArgsHandler :: (String, String, String) -> IO ()
+validCommandLineArgsHandler (userToken, appToken, tag) = do
     currentTime <- getPOSIXTime
     let soURL = constructSOQuestionsURL tag $ millis15SecsBack currentTime
     resultAsString <- runMaybeT $ openURL soURL
@@ -101,14 +105,19 @@ main = do
     csvOfExistingQs <- parseCSVFromFile "so_questions_db"
     let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
     let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
-    _ <- writeFile "so_questions_db.new" $ printCSV (case csvOfAllQs of
-        Left _ -> [[]]
-        Right out -> out)
-    _ <- removeFile "so_questions_db"
-    _ <- renameFile "so_questions_db.new" "so_questions_db"
+    _ <- case fmap persistAllQuestions csvOfAllQs of
+        Left err -> putStrLn err
+        Right _ -> putStrLn "Persisted the new Questions"
     case csvOfNewQs of 
         Right newQs -> do 
             _ <- showNewQs newQs
             _ <- sendToPebble userToken appToken newQs
-            return ()
+            putStrLn "Sent new Questiosn to Pushover"
         Left err -> putStrLn err
+
+main :: IO ()
+main = do
+    args <- getArgs
+    case args of 
+        userToken : appToken : tag : _ -> validCommandLineArgsHandler (userToken, appToken, tag)
+        _                              -> putStrLn "Usage: soqpuppet <userToken> <appToken> <tag>"
