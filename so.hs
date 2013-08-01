@@ -82,9 +82,8 @@ mergeCSVs = csvOp (\(csv1, csv2) ->
 
 sendToPebble :: String -> String -> CSV -> IO [()]
 sendToPebble userToken appToken qs = let 
-    paramsFor question = [ "token=" ++ appToken, "user=" ++ userToken, ("message=" ++ title question)] 
-    in 
-        sequence $ fmap (postToPushover . paramsFor . toQ) (take 5 qs)
+    paramsForQs question = [ "token=" ++ appToken, "user=" ++ userToken, ("message=" ++ title question)] 
+    in sequence $ fmap (postToPushover . paramsForQs . toQ) (take 5 qs)
 
 showNewQs :: CSV  -> IO ()
 showNewQs qs =  putStr $ printCSV qs
