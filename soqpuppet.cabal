@@ -1,0 +1,10 @@
+Name: soqpuppet
+Version: 0.1
+Description: Query for latest SO questions in a tag and send to pushover
+License: GPL
+Author: Ratan Sebastian
+Build-Type: Simple
+Cabal-Version: >=1.2
+Executable soqpuppet
+  Main-is: soqpuppet.hs
+  Build-Depends: base, directory, time, parsec, mtl, MaybeT, HTTP, network, csv, aeson, curl, zlib, bytestring
