@@ -1,14 +1,10 @@
-Instructions
+Installation
 ------------
 
-Run by doing
+    cabal install --prefix=$HOME --user
 
-    runhaskell so.hs <pushover user key> <pushover application key>
+Usage
+-----
 
-Dependencies
-------------
-
-    cabal install curl
-    cabal install csv
-    cabal install aeson
+    soqpuppet <pushover user key> <pushover application key> <SO tag that you want questions sent on>
 
