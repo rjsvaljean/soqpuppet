@@ -93,15 +93,18 @@ persistAllQuestions csvOfAllQs = do
     _ <- writeFile "so_questions_db.new" $ printCSV csvOfAllQs
     renameFile "so_questions_db.new" "so_questions_db"
 
+fetchedQsAsCSV :: Maybe String -> String -> Either String CSV
+fetchedQsAsCSV resultAsString soURL = do  
+    result <- toLeft resultAsString ("Could not fetch URL: " ++ soURL)
+    unzippedResult <- unZipResult result
+    parseResult unzippedResult
+
 validCommandLineArgsHandler :: (String, String, String) -> IO ()
 validCommandLineArgsHandler (userToken, appToken, tag) = do
     currentTime <- getPOSIXTime
     let soURL = constructSOQuestionsURL tag $ millis15SecsBack currentTime
     resultAsString <- runMaybeT $ openURL soURL
-    let csvOfFetchedQs = do  
-        result <- toLeft resultAsString ("Could not fetch URL: " ++ soURL)
-        unzippedResult <- unZipResult result
-        parseResult unzippedResult
+    let csvOfFetchedQs = fetchedQsAsCSV resultAsString soURL
     csvOfExistingQs <- parseCSVFromFile "so_questions_db"
     let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
     let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
