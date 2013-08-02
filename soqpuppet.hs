@@ -15,6 +15,11 @@ import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
 import qualified Data.Aeson as Json
 
+dbFileName = "/.soq_db"
+
+soqDb :: String -> String
+soqDb prefix = prefix ++ dbFileName
+
 openURL :: String -> MaybeT IO String
 openURL url = case parseURI url of
     Nothing -> fail ""
@@ -83,15 +88,16 @@ mergeCSVs = csvOp (\(csv1, csv2) ->
 sendToPebble :: String -> String -> CSV -> IO [()]
 sendToPebble userToken appToken qs = let 
     paramsForQs question = [ "token=" ++ appToken, "user=" ++ userToken, ("message=" ++ title question)] 
-    in sequence $ fmap (postToPushover . paramsForQs . toQ) (take 5 qs)
+    in return [()] -- sequence $ fmap (postToPushover . paramsForQs . toQ) (take 5 qs)
 
 showNewQs :: CSV  -> IO ()
 showNewQs qs =  putStr $ printCSV qs
 
-persistAllQuestions :: CSV -> IO ()
-persistAllQuestions csvOfAllQs = do
-    _ <- writeFile "so_questions_db.new" $ printCSV csvOfAllQs
-    renameFile "so_questions_db.new" "so_questions_db"
+persistAllQuestions :: String -> CSV -> IO ()
+persistAllQuestions db csvOfAllQs = do
+    _ <- writeFile (db ++ ".new") $ printCSV csvOfAllQs
+    _ <- removeFile db
+    renameFile (db ++ ".new") db
 
 fetchedQsAsCSV :: Maybe String -> String -> Either String CSV
 fetchedQsAsCSV resultAsString soURL = do  
@@ -102,20 +108,21 @@ fetchedQsAsCSV resultAsString soURL = do
 validCommandLineArgsHandler :: (String, String, String) -> IO ()
 validCommandLineArgsHandler (userToken, appToken, tag) = do
     currentTime <- getPOSIXTime
+    home <- getHomeDirectory
     let soURL = constructSOQuestionsURL tag $ millis15SecsBack currentTime
     resultAsString <- runMaybeT $ openURL soURL
     let csvOfFetchedQs = fetchedQsAsCSV resultAsString soURL
-    csvOfExistingQs <- parseCSVFromFile "so_questions_db"
+    csvOfExistingQs <- parseCSVFromFile $ soqDb home
     let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
     let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
-    _ <- case fmap persistAllQuestions csvOfAllQs of
+    _ <- case fmap (persistAllQuestions $ soqDb home) csvOfAllQs of
         Left err -> putStrLn err
-        Right _ -> putStrLn "Persisted the new Questions"
+        Right write -> do _ <- write; putStrLn "Persisted the new Questions"
     case csvOfNewQs of 
         Right newQs -> do 
             _ <- showNewQs newQs
             _ <- sendToPebble userToken appToken newQs
-            putStrLn "Sent new Questiosn to Pushover"
+            putStrLn "Sent new Questions to Pushover"
         Left err -> putStrLn err
 
 main :: IO ()

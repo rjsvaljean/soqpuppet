@@ -1,6 +1,7 @@
 Installation
 ------------
 
+    touch ~/.soq_db
     cabal install --prefix=$HOME --user
 
 Usage
