@@ -37,6 +37,9 @@ constructSOQuestionsURL tag timeSince = "http://api.stackoverflow.com/1.1/questi
     "&tagged=" ++ tag ++ 
     "&sort=creation"
 
+soqURL :: Integer -> String
+soqURL qid = "http://stackoverflow.com/questions/" ++ (show qid)
+
 postToPushover :: [String] -> IO()
 postToPushover = curlPost "https://api.pushover.net/1/messages.json" 
 
@@ -44,9 +47,9 @@ toLeft :: Maybe a -> e -> Either e a
 toLeft ( Just x ) _ = Right x
 toLeft Nothing e    = Left e
 
-data Question = Question { title :: String , creationDate :: Integer} deriving Show
+data Question = Question { title :: String , question_id :: Integer} deriving Show
 instance Json.FromJSON Question where
-    parseJSON (Json.Object v) = Question <$> v Json..: "title" <*> v Json..: "creation_date"
+    parseJSON (Json.Object v) = Question <$> v Json..: "title" <*> v Json..: "question_id"
     parseJSON _ = fail "malformed JSON response"
 
 data Questions = Questions { qs :: [Question] } deriving Show
@@ -55,7 +58,7 @@ instance Json.FromJSON Questions where
     parseJSON _ = fail "malformed JSON response"
 
 toCSVRecord :: Question -> Record
-toCSVRecord q = [show $ creationDate q,  title q]
+toCSVRecord q = [show $ question_id q,  title q]
 
 toQ :: Record -> Question
 toQ (rowId : rowTitle : _) = Question rowTitle (read rowId :: Integer)
@@ -87,7 +90,11 @@ mergeCSVs = csvOp (\(csv1, csv2) ->
 
 sendToPebble :: String -> String -> CSV -> IO [()]
 sendToPebble userToken appToken qs = let 
-    paramsForQs question = [ "token=" ++ appToken, "user=" ++ userToken, ("message=" ++ title question)] 
+    paramsForQs question = [ 
+        "token=" ++ appToken, 
+        "user=" ++ userToken, 
+        "message=" ++ title question,
+        "url=" ++ soqURL (question_id question)] 
     in sequence $ fmap (postToPushover . paramsForQs . toQ) (take 5 qs)
 
 showNewQs :: CSV  -> IO ()
