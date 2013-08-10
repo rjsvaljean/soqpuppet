@@ -5,6 +5,7 @@ import Network.HTTP
 import Network.Curl
 import Control.Monad.Maybe
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.Trans
 import Text.CSV
 import Text.ParserCombinators.Parsec.Error
@@ -15,6 +16,7 @@ import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Codec.Compression.GZip as GZip
 import qualified Data.Aeson as Json
 
+dbFileName :: String
 dbFileName = "/.soq_db"
 
 soqDb :: String -> String
@@ -72,21 +74,16 @@ unZipResult x = Right $ GZip.decompress $ C.pack x
 parseResult :: C.ByteString -> Either String CSV
 parseResult x = fmap toCSV (Json.eitherDecode x :: Either String Questions)
 
-csvOp :: (Show a, Show b) => ((CSV, CSV) -> CSV) -> Either a CSV -> Either b CSV -> Either String CSV
-csvOp f (Right csv1) (Right csv2) = Right $ f (csv1, csv2)
-csvOp f (Left error) (Right _) = Left (show error)
-csvOp f (Right _) (Left error) = Left (show error)
-csvOp f (Left e1) (Left e2)    = Left ((show e1) ++ (show e2))
+csvOp :: (CSV -> CSV -> CSV) -> Either String CSV -> Either ParseError CSV -> Either String CSV
+csvOp f a b = (pure f) <*> a <*> (left show b)
 
-diffCSVs :: Either String CSV -> Either ParseError CSV -> Either String CSV
-diffCSVs = csvOp (\(csv1, csv2) ->
-    let csv2Ids = fmap head csv2 
-    in filter (\r -> head r `notElem` csv2Ids) csv1) 
+diffCSVs' :: CSV -> CSV -> CSV
+diffCSVs' csv1 csv2 = let csv2Ids = fmap head csv2 
+    in filter (\r -> head r `notElem` csv2Ids) csv1
 
-mergeCSVs :: Either String CSV -> Either ParseError CSV -> Either String CSV
-mergeCSVs = csvOp (\(csv1, csv2) ->
-    let csv2Ids = fmap head csv2 
-    in filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2)
+mergeCSVs' :: CSV -> CSV -> CSV
+mergeCSVs' csv1 csv2 = let csv2Ids = fmap head csv2 
+    in filter (\r -> head r `notElem` csv2Ids) csv1 ++ csv2
 
 sendToPebble :: String -> String -> CSV -> IO [()]
 sendToPebble userToken appToken qs = let 
@@ -120,8 +117,8 @@ validCommandLineArgsHandler (userToken, appToken, tag) = do
     resultAsString <- runMaybeT $ openURL soURL
     let csvOfFetchedQs = fetchedQsAsCSV resultAsString soURL
     csvOfExistingQs <- parseCSVFromFile $ soqDb home
-    let csvOfNewQs = diffCSVs csvOfFetchedQs csvOfExistingQs
-    let csvOfAllQs = mergeCSVs csvOfFetchedQs csvOfExistingQs
+    let csvOfNewQs = (csvOp diffCSVs') csvOfFetchedQs csvOfExistingQs
+    let csvOfAllQs = (csvOp mergeCSVs') csvOfFetchedQs csvOfExistingQs
     _ <- case fmap (persistAllQuestions $ soqDb home) csvOfAllQs of
         Left err -> putStrLn err
         Right write -> do _ <- write; putStrLn "Persisted the new Questions"
